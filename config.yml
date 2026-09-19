@@ -1,0 +1,81 @@
+# Assignment addressing and overlay policy.
+# Bootstrap IPs are applied from each router's config.boot.
+# IPsec, VXLAN, routes and NAT are pushed via the VyOS HTTP API
+# by the provisioner after the routers finish booting.
+
+api:
+  key: lab-api-key
+  port: 443
+
+mgmt:
+  network: 10.0.0.0/24
+  central: 10.0.0.1
+  edge_a: 10.0.0.2
+  edge_b: 10.0.0.3
+  provisioner: 10.0.0.10
+
+internet:
+  # Documentation prefix; Docker NATs this bridge to the real internet.
+  network: 203.0.113.0/24
+  central: 203.0.113.1
+  gateway: 203.0.113.254
+
+site_a:
+  wan:
+    cidr: 1.1.1.0/30
+    edge: 1.1.1.1
+    central: 1.1.1.2
+  subnet1:
+    name: Subnet1A
+    cidr: 192.168.2.0/24
+    gateway: 192.168.2.1
+    hosts: [192.168.2.10, 192.168.2.11]
+  subnet2:
+    name: Subnet2A
+    cidr: 192.168.1.0/24
+    gateway: 192.168.1.1
+    hosts: [192.168.1.10, 192.168.1.11]
+
+site_b:
+  wan:
+    cidr: 1.1.2.0/30
+    edge: 1.1.2.1
+    central: 1.1.2.2
+  subnet1:
+    name: Subnet1B
+    cidr: 192.168.4.0/24
+    gateway: 192.168.4.1
+    hosts: [192.168.4.10, 192.168.4.11]
+  subnet2:
+    name: Subnet2B
+    cidr: 192.168.3.0/24
+    gateway: 192.168.3.1
+    hosts: [192.168.3.10, 192.168.3.11]
+
+# Site A <-> Central overlay
+ipsec:
+  psk: lab-ipsec-psk
+  local_wan: 1.1.1.1
+  remote_wan: 1.1.1.2
+  vti:
+    cidr: 10.255.10.0/30
+    edge_a: 10.255.10.1
+    central: 10.255.10.2
+
+# Site B <-> Central overlay
+vxlan:
+  vni: 100
+  port: 4789
+  local_wan: 1.1.2.1
+  remote_wan: 1.1.2.2
+  overlay:
+    cidr: 10.255.20.0/24
+    edge_b: 10.255.20.1
+    central: 10.255.20.2
+
+# Central NATs only Subnet1A and Subnet1B to the internet
+nat:
+  outbound_interface: eth0
+  sources:
+    - 192.168.2.0/24
+    - 192.168.4.0/24
