@@ -40,7 +40,7 @@ def api(base: str, key: str, endpoint: str, payload) -> dict:
         method="POST",
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
-    with urllib.request.urlopen(req, context=CTX, timeout=30) as resp:
+    with urllib.request.urlopen(req, context=CTX, timeout=120) as resp:
         raw = resp.read().decode()
     return json.loads(raw) if raw else {}
 
@@ -58,8 +58,8 @@ def wait_for_api(base: str, key: str) -> None:
     raise SystemExit(f"API not reachable: {base}")
 
 
-def set_cmd(path: list[str], value=None) -> dict:
-    cmd = {"op": "set", "path": path}
+def set_cmd(path: list, value=None) -> dict:
+    cmd = {"op": "set", "path": [str(p) for p in path]}
     if value is not None:
         cmd["value"] = str(value)
     return cmd
@@ -67,10 +67,20 @@ def set_cmd(path: list[str], value=None) -> dict:
 
 def configure_router(name: str, base: str, key: str, commands: list[dict]) -> None:
     print(f"configuring {name} ({len(commands)} commands)", flush=True)
-    result = api(base, key, "configure", commands)
+    try:
+        result = api(base, key, "configure", commands)
+    except urllib.error.HTTPError as err:
+        body = err.read().decode() if err.fp else ""
+        raise SystemExit(f"{name} configure HTTP {err.code}: {body}") from err
     print(f"{name} configure: {result}", flush=True)
-    saved = api(base, key, "config-file", {"op": "save"})
-    print(f"{name} save: {saved}", flush=True)
+    if result.get("success") is False:
+        raise SystemExit(f"{name} configure failed: {result.get('error')}")
+    try:
+        saved = api(base, key, "config-file", {"op": "save"})
+        print(f"{name} save: {saved}", flush=True)
+    except urllib.error.HTTPError as err:
+        body = err.read().decode() if err.fp else ""
+        print(f"{name} save skipped: HTTP {err.code} {body}", flush=True)
 
 
 def ipsec_commands(local: str, remote: str, vti_addr: str, psk: str, wan_if: str) -> list[dict]:
@@ -83,10 +93,10 @@ def ipsec_commands(local: str, remote: str, vti_addr: str, psk: str, wan_if: str
         set_cmd(["vpn", "ipsec", "ike-group", "IKE-LAB", "proposal", "1", "hash", "sha256"]),
         set_cmd(["vpn", "ipsec", "ike-group", "IKE-LAB", "proposal", "1", "dh-group", "14"]),
         set_cmd(["vpn", "ipsec", "esp-group", "ESP-LAB", "lifetime", "1800"]),
-        set_cmd(["vpn", "ipsec", "esp-group", "ESP-LAB", "pfs", "dh-group", "14"]),
+        set_cmd(["vpn", "ipsec", "esp-group", "ESP-LAB", "pfs"], "dh-group14"),
         set_cmd(["vpn", "ipsec", "esp-group", "ESP-LAB", "proposal", "1", "encryption", "aes256"]),
         set_cmd(["vpn", "ipsec", "esp-group", "ESP-LAB", "proposal", "1", "hash", "sha256"]),
-        set_cmd(["interfaces", "vti", "vti0", "address", vti_addr]),
+        set_cmd(["interfaces", "vti", "vti0", "address"], vti_addr),
         set_cmd(["vpn", "ipsec", "site-to-site", "peer", remote, "authentication", "mode", "pre-shared-secret"]),
         set_cmd(["vpn", "ipsec", "site-to-site", "peer", remote, "authentication", "pre-shared-secret", psk]),
         set_cmd(["vpn", "ipsec", "site-to-site", "peer", remote, "ike-group", "IKE-LAB"]),
@@ -98,11 +108,11 @@ def ipsec_commands(local: str, remote: str, vti_addr: str, psk: str, wan_if: str
 
 def vxlan_commands(addr: str, vni: int, port: int, source: str, remote: str) -> list[dict]:
     return [
-        set_cmd(["interfaces", "vxlan", "vxlan0", "address", addr]),
-        set_cmd(["interfaces", "vxlan", "vxlan0", "vni", vni]),
-        set_cmd(["interfaces", "vxlan", "vxlan0", "port", port]),
-        set_cmd(["interfaces", "vxlan", "vxlan0", "source-address", source]),
-        set_cmd(["interfaces", "vxlan", "vxlan0", "remote", remote]),
+        set_cmd(["interfaces", "vxlan", "vxlan0", "address"], addr),
+        set_cmd(["interfaces", "vxlan", "vxlan0", "vni"], vni),
+        set_cmd(["interfaces", "vxlan", "vxlan0", "port"], port),
+        set_cmd(["interfaces", "vxlan", "vxlan0", "source-address"], source),
+        set_cmd(["interfaces", "vxlan", "vxlan0", "remote"], remote),
     ]
 
 
@@ -152,7 +162,7 @@ def main() -> int:
             ipsec["remote_wan"],
             f"{ipsec['vti']['edge_a']}/30",
             ipsec["psk"],
-            "eth0",
+            "eth3",
         )
         + [static_route("0.0.0.0/0", ipsec["vti"]["central"])],
     )
@@ -180,7 +190,7 @@ def main() -> int:
             ipsec["local_wan"],
             f"{ipsec['vti']['central']}/30",
             ipsec["psk"],
-            "eth1",
+            "eth2",
         )
         + vxlan_commands(
             f"{vxlan['overlay']['central']}/24",

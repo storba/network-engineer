@@ -12,6 +12,7 @@
 #    192.168.2.0  192.168.1.0  192.168.4.0  192.168.3.0
 #
 # Docker bridge gateways use .254 so routers can own .1 / WAN P2P IPs.
+# Docker 26 attaches networks alphabetically, which is how VyOS ethN is assigned.
 
 name: site-to-site
 
