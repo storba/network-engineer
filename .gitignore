@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+vyos/*/archive/
+vyos/*/vyos-migrate.log
