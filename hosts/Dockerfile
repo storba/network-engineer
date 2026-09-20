@@ -8,6 +8,7 @@ RUN apt-get update \
         iputils-ping \
         traceroute \
         net-tools \
+        tcpdump \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
