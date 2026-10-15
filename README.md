@@ -80,3 +80,14 @@ LAB_INTERNET_IP=9.9.9.9 python3 -m unittest test_connectivity.py -v
 ```bash
 docker compose down
 ```
+## if error
+```bash
+docker compose down --remove-orphans
+
+docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}' | grep -E '1\.1\.|192\.168\.|10\.0\.0\.|203\.0\.113'
+
+docker network rm site-to-site_net_wan_b net_wan_b \
+  site-to-site_net_wan_a net_wan_a 2>/dev/null
+
+docker compose up -d --build
+```
