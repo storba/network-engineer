@@ -1,5 +1,19 @@
 #!/bin/sh
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
+
+# Docker installs a kernel default via the management gateway. Zebra keeps
+# that route (distance 0) ahead of the VXLAN static default, so traffic for
+# site A is sent to 10.0.0.254 and dropped. Replace it with the overlay.
+ip route del default via 10.0.0.254 dev eth0 2>/dev/null || true
+i=0
+while [ "$i" -lt 30 ]; do
+    if ip route replace default via 10.255.20.2 dev vxlan0; then
+        break
+    fi
+    i=$((i + 1))
+    sleep 1
+done
+
 ln -sfn /opt/vyatta/etc/config /config
 if [ ! -s /etc/ssl/certs/ssl-cert-snakeoil.pem ]; then
     make-ssl-cert generate-default-snakeoil --force-overwrite
