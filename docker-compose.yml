@@ -12,28 +12,16 @@
 #    192.168.2.0  192.168.1.0  192.168.4.0  192.168.3.0
 #
 # Docker bridge gateways use .254 so routers can own .1 / WAN P2P IPs.
-# Docker 26 attaches networks alphabetically, which is how VyOS ethN is assigned.
+# Networks are listed alphabetically: Docker attaches them in that order,
+# and config.boot assigns eth0, eth1, ... to match.
 
 name: site-to-site
 
 x-router: &router
   image: afla/vyos:1.4
   privileged: true
-  cap_add:
-    - NET_ADMIN
-    - SYS_ADMIN
-    - SYS_MODULE
-  devices:
-    - /dev/net/tun
   sysctls:
     net.ipv4.ip_forward: "1"
-    net.ipv6.conf.all.disable_ipv6: "0"
-  volumes:
-    - /lib/modules:/lib/modules:ro
-  command: ["/sbin/init"]
-  stop_grace_period: 1m
-  stdin_open: true
-  tty: true
   depends_on:
     - allow_bridged
 
@@ -44,9 +32,8 @@ x-host: &host
     - NET_ADMIN
 
 services:
-  # Internal Docker bridges drop off-subnet dest IPs even when the frame
-  # is L2-switched to a router on the same bridge. Accept bridged traffic
-  # so VyOS can route between lab subnets; isolation still blocks leaks.
+  # Internal Docker bridges drop off-subnet dest IPs. Accept bridged
+  # frames so a VyOS router can forward between lab subnets.
   allow_bridged:
     build:
       context: ./bridge-filter
@@ -54,76 +41,58 @@ services:
     network_mode: host
     cap_add:
       - NET_ADMIN
-    privileged: true
-    restart: unless-stopped
 
   central_router:
     <<: *router
     container_name: central_router
-    hostname: central-router
     volumes:
       - /lib/modules:/lib/modules:ro
       - ./vyos/central:/opt/vyatta/etc/config
     networks:
       net_internet:
         ipv4_address: 203.0.113.1
-        priority: 1000
-      net_wan_a:
-        ipv4_address: 1.1.1.2
-        priority: 900
-      net_wan_b:
-        ipv4_address: 1.1.2.2
-        priority: 800
       net_mgmt:
         ipv4_address: 10.0.0.1
-        priority: 700
+      net_wan_a:
+        ipv4_address: 1.1.1.2
+      net_wan_b:
+        ipv4_address: 1.1.2.2
 
   edge_router_a:
     <<: *router
     container_name: edge_router_a
-    hostname: edge-router-a
     volumes:
       - /lib/modules:/lib/modules:ro
       - ./vyos/edge-a:/opt/vyatta/etc/config
     networks:
-      net_wan_a:
-        ipv4_address: 1.1.1.1
-        priority: 1000
-      net_subnet1a:
-        ipv4_address: 192.168.2.1
-        priority: 900
-      net_subnet2a:
-        ipv4_address: 192.168.1.1
-        priority: 800
       net_mgmt:
         ipv4_address: 10.0.0.2
-        priority: 700
+      net_subnet1a:
+        ipv4_address: 192.168.2.1
+      net_subnet2a:
+        ipv4_address: 192.168.1.1
+      net_wan_a:
+        ipv4_address: 1.1.1.1
 
   edge_router_b:
     <<: *router
     container_name: edge_router_b
-    hostname: edge-router-b
     volumes:
       - /lib/modules:/lib/modules:ro
       - ./vyos/edge-b:/opt/vyatta/etc/config
     networks:
-      net_wan_b:
-        ipv4_address: 1.1.2.1
-        priority: 1000
-      net_subnet1b:
-        ipv4_address: 192.168.4.1
-        priority: 900
-      net_subnet2b:
-        ipv4_address: 192.168.3.1
-        priority: 800
       net_mgmt:
         ipv4_address: 10.0.0.3
-        priority: 700
+      net_subnet1b:
+        ipv4_address: 192.168.4.1
+      net_subnet2b:
+        ipv4_address: 192.168.3.1
+      net_wan_b:
+        ipv4_address: 1.1.2.1
 
   host_1a_1:
     <<: *host
     container_name: host_1a_1
-    hostname: host-1a-1
     environment:
       GATEWAY: 192.168.2.1
     networks:
@@ -134,7 +103,6 @@ services:
   host_1a_2:
     <<: *host
     container_name: host_1a_2
-    hostname: host-1a-2
     environment:
       GATEWAY: 192.168.2.1
     networks:
@@ -145,7 +113,6 @@ services:
   host_2a_1:
     <<: *host
     container_name: host_2a_1
-    hostname: host-2a-1
     environment:
       GATEWAY: 192.168.1.1
     networks:
@@ -156,7 +123,6 @@ services:
   host_2a_2:
     <<: *host
     container_name: host_2a_2
-    hostname: host-2a-2
     environment:
       GATEWAY: 192.168.1.1
     networks:
@@ -167,7 +133,6 @@ services:
   host_1b_1:
     <<: *host
     container_name: host_1b_1
-    hostname: host-1b-1
     environment:
       GATEWAY: 192.168.4.1
     networks:
@@ -178,7 +143,6 @@ services:
   host_1b_2:
     <<: *host
     container_name: host_1b_2
-    hostname: host-1b-2
     environment:
       GATEWAY: 192.168.4.1
     networks:
@@ -189,7 +153,6 @@ services:
   host_2b_1:
     <<: *host
     container_name: host_2b_1
-    hostname: host-2b-1
     environment:
       GATEWAY: 192.168.3.1
     networks:
@@ -200,7 +163,6 @@ services:
   host_2b_2:
     <<: *host
     container_name: host_2b_2
-    hostname: host-2b-2
     environment:
       GATEWAY: 192.168.3.1
     networks:
@@ -223,20 +185,15 @@ services:
       - central_router
       - edge_router_a
       - edge_router_b
-    restart: "no"
 
 networks:
   net_internet:
-    name: net_internet
-    driver: bridge
     ipam:
       config:
         - subnet: 203.0.113.0/24
           gateway: 203.0.113.254
 
   net_mgmt:
-    name: net_mgmt
-    driver: bridge
     ipam:
       config:
         - subnet: 10.0.0.0/24
@@ -244,8 +201,6 @@ networks:
 
   # Assignment WAN is 1.1.1.0/30; Docker uses /24 so .1 and .2 are free.
   net_wan_a:
-    name: net_wan_a
-    driver: bridge
     internal: true
     ipam:
       config:
@@ -253,8 +208,6 @@ networks:
           gateway: 1.1.1.254
 
   net_wan_b:
-    name: net_wan_b
-    driver: bridge
     internal: true
     ipam:
       config:
@@ -262,8 +215,6 @@ networks:
           gateway: 1.1.2.254
 
   net_subnet1a:
-    name: net_subnet1a
-    driver: bridge
     internal: true
     ipam:
       config:
@@ -271,8 +222,6 @@ networks:
           gateway: 192.168.2.254
 
   net_subnet2a:
-    name: net_subnet2a
-    driver: bridge
     internal: true
     ipam:
       config:
@@ -280,8 +229,6 @@ networks:
           gateway: 192.168.1.254
 
   net_subnet1b:
-    name: net_subnet1b
-    driver: bridge
     internal: true
     ipam:
       config:
@@ -289,8 +236,6 @@ networks:
           gateway: 192.168.4.254
 
   net_subnet2b:
-    name: net_subnet2b
-    driver: bridge
     internal: true
     ipam:
       config:
