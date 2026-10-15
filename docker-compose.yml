@@ -19,10 +19,6 @@ name: site-to-site
 x-router: &router
   image: afla/vyos:1.4
   privileged: true
-  cap_add:
-    - NET_ADMIN
-    - SYS_ADMIN
-    - SYS_MODULE
   devices:
     - /dev/net/tun
   sysctls:

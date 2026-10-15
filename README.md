@@ -32,22 +32,12 @@ The current user must be able to run `docker` without extra wrappers.
 From the repo root on the VM:
 
 ```bash
-docker compose up -d --build
+./start.sh
 ```
 
-VyOS takes a couple of minutes to boot. The `provisioner` container then pushes IPsec, VXLAN, static routes, and NAT over the management network. Wait until it exits successfully:
+That is the whole startup. It runs `docker compose up -d --build`, waits until the provisioner prints `provisioning complete` (and starts it again if VyOS was not ready), then waits until Site A and Site B can ping each other and runs the tests.
 
-```bash
-docker compose logs -f provisioner
-```
-
-You should see `provisioning complete`. If it exits before the APIs are up, run it again:
-
-```bash
-docker compose up provisioner
-```
-
-`allow_bridged` must stay running. Docker `internal` bridges otherwise drop off-subnet frames before they reach the routers.
+`docker compose up -d` returns while VyOS is still booting. Running the tests in that window fails even though the containers are up. `docker compose logs -f provisioner` only shows logs; it does not finish startup. `allow_bridged` is started by Compose and must stay running.
 
 ## Run the tests
 
@@ -91,3 +81,9 @@ docker network rm site-to-site_net_wan_b net_wan_b \
 
 docker compose up -d --build
 ```
+
+##
+cap_add:
+    - NET_ADMIN
+    - SYS_ADMIN
+    - SYS_MODULE
