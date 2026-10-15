@@ -20,6 +20,8 @@ name: site-to-site
 x-router: &router
   image: afla/vyos:1.4
   privileged: true
+  devices:
+    - /dev/net/tun
   sysctls:
     net.ipv4.ip_forward: "1"
   depends_on:
@@ -39,8 +41,7 @@ services:
       context: ./bridge-filter
     container_name: allow_bridged
     network_mode: host
-    cap_add:
-      - NET_ADMIN
+    privileged: true
 
   central_router:
     <<: *router
